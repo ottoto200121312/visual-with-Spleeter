@@ -725,6 +725,30 @@ stemLabels.forEach((label, index) => {
   // 再生コントロールの設定
   setupPlaybackControls();
 
+
+    // audioの再生位置とスライダーを同期
+  for (let i = 0; i < aud.stems; i++) {
+    const audio = document.getElementById(`audioStem${i+1}`);
+    if (audio) {
+      // loadedmetadataイベントを追加
+      audio.addEventListener('loadedmetadata', function() {
+        const maxDuration = Array.from(document.querySelectorAll('[id^=audioStem]'))
+          .reduce((max, audio) => audio.duration > max ? audio.duration : max, 0);
+        timelineSlider.max = maxDuration;
+        totalTimeSpan.textContent = formatTime(maxDuration);
+      });
+
+      audio.addEventListener('timeupdate', function() {
+        // 再生中の場合のみ更新
+        if (isPlaying) {
+          timelineSlider.value = this.currentTime;
+          currentTimeSpan.textContent = formatTime(this.currentTime);
+        }
+      });
+    }
+  }
+
+
   // 初期状態設定
   stemVisibility = Array(aud.stems).fill(false);
 }
@@ -735,13 +759,42 @@ function setupPlaybackControls() {
 
   timelineSlider = document.getElementById('timelineSlider');
   timelineSlider.max = duration;
-  timelineSlider.addEventListener('input', seekAudio);
+  timelineSlider.addEventListener('input', function() {
+    seekAudio();
+    // スライダー操作中は一時停止
+    if (isPlaying) {
+      togglePlayAll();
+    }
+  });
+
+  timelineSlider.addEventListener('change', function() {
+    // スライダー操作終了時に再生状態を維持
+    if (!isPlaying) {
+      togglePlayAll();
+    }
+  });
+
+  currentTimeSpan = document.getElementById('currentTime');
 
   currentTimeSpan = document.getElementById('currentTime');
   totalTimeSpan = document.getElementById('totalTime');
   totalTimeSpan.textContent = formatTime(duration);
 
-  setInterval(updateCurrentTime, 1000);
+    // スライダーの更新をここで行う
+    let maxDuration = 0;
+    for (let i = 0; i < aud.stems; i++) {
+      const audio = document.getElementById(`audioStem${i+1}`);
+      if (audio) {
+        maxDuration = Math.max(maxDuration, audio.duration);
+      }
+    }
+    timelineSlider.max = maxDuration;
+    timelineSlider.addEventListener('input', seekAudio);
+    totalTimeSpan.textContent = formatTime(maxDuration);
+  
+    // 定期的な更新
+    setInterval(updateCurrentTime, 100); // より滑らかな更新のため100msに変更
+  
 }
 
 function toggleStem(stemIndex) {
@@ -794,15 +847,18 @@ function togglePlayAll() {
 }
 
 function seekAudio() {
-  let time = timelineSlider.value;
+  const time = parseFloat(timelineSlider.value);
+  if (isNaN(time)) return;
+  
   for (let i = 0; i < aud.stems; i++) {
-    let audio = document.getElementById(`audioStem${i+1}`);
-    if (audio) {
-      audio.currentTime = time;
+    const audio = document.getElementById(`audioStem${i+1}`);
+    if (audio && !isNaN(audio.duration)) {
+      audio.currentTime = Math.min(time, audio.duration);
     }
   }
-  updateCurrentTime();
+  currentTimeSpan.textContent = formatTime(time);
 }
+
 
 function updateCurrentTime() {
   let currentTime = 0;
